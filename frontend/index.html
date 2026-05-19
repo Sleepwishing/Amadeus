@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amadeus - AI Agent</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Live2D SDK: pixi-live2d-display 简化方案 -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/browser/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Live2D 渲染区域 -->
+        <div id="live2d-container">
+            <canvas id="live2d-canvas"></canvas>
+        </div>
+
+        <!-- 聊天区域 -->
+        <div id="chat-container">
+            <div id="chat-messages">
+                <div class="message system">
+                    <span>✨ Amadeus 系统启动完成~ 等待后端服务连接...</span>
+                </div>
+            </div>
+            <div id="chat-input-area">
+                <input type="text" id="chat-input" placeholder="和 Amadeus 聊天吧..." disabled>
+                <button id="send-btn" disabled>发送</button>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <div id="status-bar">
+            <span id="status-dot"></span>
+            <span id="status-text">系统初始化中...</span>
+        </div>
+    </div>
+
+    <script src="js/live2d/live2d-render.js"></script>
+    <script src="js/chat/chat-core.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
