@@ -4,9 +4,9 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # LLM API 配置 - 源宝可以在这里改成自己的 API
-    LLM_BASE_URL: str = "https://api.openai.com/v1"
-    LLM_API_KEY: str = "sk-your-key-here"
-    LLM_MODEL: str = "gpt-3.5-turbo"
+    LLM_BASE_URL: str = "https://api.deepseek.com"  # DeepSeek API 地址
+    LLM_API_KEY: str = "sk-3b80df85087b4758a2ebb8939a8e5581"
+    LLM_MODEL: str = "deepseek-v4-flash"
     
     # TTS 配置
     TTS_VOICE: str = "zh-CN-XiaoxiaoNeural"  # Edge-TTS 中文女声

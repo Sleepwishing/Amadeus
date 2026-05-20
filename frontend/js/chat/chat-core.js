@@ -74,15 +74,41 @@ class ChatCore {
         this.input.value = '';
         this.addMessage('user', text);
 
-        // 显示等待状态
+        // 显示等待状态（这个 div 之后会被替换成真实回复）
         const loadingMsg = this.addMessage('assistant', '思考中...');
         
         try {
-            // TODO: P1 将在这里调用真实的 /chat 接口
-            // 目前先模拟回复
-            await this.simulateResponse(loadingMsg);
+            // === P1: 真实调用 /chat 接口 ===
+            
+            // 1. 发送 POST 请求到后端
+            // fetch 是浏览器内置的 HTTP 客户端，返回 Promise
+            const res = await fetch(`${this.API_BASE}/chat`, {
+                method: 'POST',                          // 创建资源，服务端返回新的消息
+                headers: {
+                    'Content-Type': 'application/json',  // 告诉服务端：发送的是 JSON
+                },
+                body: JSON.stringify({                   // 把 JS 对象转成 JSON 字符串
+                    message: text                         // 与后端 ChatRequest 的字段名对应
+                })
+            });
+
+            // 2. 检查 HTTP 状态
+            // 如果不是 200 系列（如 401/500/429），抛出错误进 catch 分支
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+
+            // 3. 解析 JSON 响应
+            // 后端返回: {"reply": "这是LLM的回复"}
+            const data = await res.json();
+
+            // 4. 把"思考中..."替换成真实回复
+            // 不用每字逐字打出了，因为 LLM 回复可能很长，打字机效果会让用户等得太久
+            loadingMsg.textContent = data.reply;
+
         } catch (err) {
-            loadingMsg.textContent = '哎呀，出错了... 请稍后重试~';
+            // 网络错误 / API 密钥错误 / LLM 服务器故障 等
+            loadingMsg.textContent = '哎呀，出错了... 请检查后端日志或 .env 配置';
             console.error('[Chat] 发送失败:', err);
         }
     }
