@@ -78,36 +78,77 @@ class ChatCore {
         const loadingMsg = this.addMessage('assistant', '思考中...');
         
         try {
-            // === P1: 真实调用 /chat 接口 ===
-            
-            // 1. 发送 POST 请求到后端
-            // fetch 是浏览器内置的 HTTP 客户端，返回 Promise
+            // === P2: 流式接收 SSE 响应 ===
+
+            // 1. 发送 POST 请求
             const res = await fetch(`${this.API_BASE}/chat`, {
-                method: 'POST',                          // 创建资源，服务端返回新的消息
-                headers: {
-                    'Content-Type': 'application/json',  // 告诉服务端：发送的是 JSON
-                },
-                body: JSON.stringify({                   // 把 JS 对象转成 JSON 字符串
-                    message: text                         // 与后端 ChatRequest 的字段名对应
-                })
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: text})
             });
 
-            // 2. 检查 HTTP 状态
-            // 如果不是 200 系列（如 401/500/429），抛出错误进 catch 分支
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status}: ${res.statusText}`);
             }
 
-            // 3. 解析 JSON 响应
-            // 后端返回: {"reply": "这是LLM的回复"}
-            const data = await res.json();
+            // 2. 获取 ReadableStream 阅读器
+            // res.body 是一个 ReadableStream，可以逐块读取
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';          // 缓冲区，用于组装不完整的 SSE 行
+            let fullReply = '';       // 累积完整回复
 
-            // 4. 把"思考中..."替换成真实回复
-            // 不用每字逐字打出了，因为 LLM 回复可能很长，打字机效果会让用户等得太久
-            loadingMsg.textContent = data.reply;
+            // 清空"思考中..."，准备接收流
+            loadingMsg.textContent = '';
+            loadingMsg.classList.add('streaming');  // 可加一个 CSS 动画标识
+
+            // 3. 循环读取数据流
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;   // 流结束
+
+                // 将二进制块解码为字符串
+                buffer += decoder.decode(value, {stream: true});
+
+                // 按 \n 分割每一行
+                const lines = buffer.split('\n');
+                buffer = lines.pop();  // 最后一行可能不完整，留到下次处理
+
+                for (const line of lines) {
+                    // SSE 行格式：data: {"chunk": "xxx"}
+                    if (line.startsWith('data: ')) {
+                        const dataStr = line.slice(6);
+
+                        // 结束标志
+                        if (dataStr === '[DONE]') continue;
+
+                        try {
+                            const data = JSON.parse(dataStr);
+                            const chunk = data.chunk;
+                            fullReply += chunk;
+                            loadingMsg.textContent = fullReply;
+                            // 自动滚动到最底
+                            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+                        } catch (e) {
+                            // 解析失败忽略（稀有）
+                            console.warn('[Chat] 解析 SSE 数据失败:', line);
+                        }
+                    }
+                }
+            }
+
+            // 处理最后留在 buffer 里的残留数据
+            if (buffer.startsWith('data: ') && buffer !== 'data: [DONE]') {
+                try {
+                    const data = JSON.parse(buffer.slice(6));
+                    if (data.chunk) {
+                        fullReply += data.chunk;
+                        loadingMsg.textContent = fullReply;
+                    }
+                } catch (e) { /* 忽略 */ }
+            }
 
         } catch (err) {
-            // 网络错误 / API 密钥错误 / LLM 服务器故障 等
             loadingMsg.textContent = '哎呀，出错了... 请检查后端日志或 .env 配置';
             console.error('[Chat] 发送失败:', err);
         }

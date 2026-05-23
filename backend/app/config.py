@@ -1,17 +1,18 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-
+import os
+from dotenv import load_dotenv
 
 class Settings(BaseSettings):
-    # LLM API 配置 - 源宝可以在这里改成自己的 API
-    LLM_BASE_URL: str = "https://api.deepseek.com"  # DeepSeek API 地址
-    LLM_API_KEY: str = "sk-3b80df85087b4758a2ebb8939a8e5581"
-    LLM_MODEL: str = "deepseek-v4-flash"
+    # LLM API 配置 
+    LLM_BASE_URL: str = str(os.environ.get("LLM_BASE_URL"))  # DeepSeek API 地址
+    LLM_API_KEY: str = str(os.environ.get("LLM_API_KEY"))
+    LLM_MODEL: str = str(os.environ.get("LLM_MODEL"))
     
     # TTS 配置
-    TTS_VOICE: str = "zh-CN-XiaoxiaoNeural"  # Edge-TTS 中文女声
-    TTS_RATE: str = "+0%"
-    TTS_VOLUME: str = "+0%"
+    TTS_VOICE: str = str(os.environ.get("TTS_VOICE"))  # Edge-TTS 中文女声
+    TTS_RATE: str = str(os.environ.get("TTS_RATE"))
+    TTS_VOLUME: str = str(os.environ.get("TTS_VOLUME"))
     
     # 记忆系统配置
     MEMORY_DB_PATH: str = "./data/memory.db"
