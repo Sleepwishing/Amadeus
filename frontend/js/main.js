@@ -32,7 +32,20 @@
     }
 
     // 将实例挂载到 window 便于调试
-    window.amadeus = { live2d, chat };
+    const audio = new AudioPlayer();
+
+    // 绑定口型同步：Live2D 嘴巴跟着声音动
+    audio.onMouthUpdate = (value) => {
+        if (live2d.model) {
+            live2d.setMouthOpen(value);
+        }
+    };
+    audio.onSpeakingEnd = () => {
+        // 播放结束，显示思考表情（后续 P5 会根据情感切换）
+        live2d.setExpression('neutral');
+    };
+
+    window.amadeus = { live2d, chat, audio };
     
     console.log('🎉 Amadeus 启动完成！');
 })();

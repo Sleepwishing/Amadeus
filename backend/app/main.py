@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from app.agent.llm_client import chat_stream
+from app.tts.gpt_sovits import synthesize as sovits_synthesize
+from app.tts.translator import translate_to_japanese
 import uvicorn
 
 from app.config import get_settings
@@ -80,7 +82,34 @@ async def chat_endpoint(request: ChatRequest):
         media_type="text/event-stream",
     )
 
-# TODO: P3 将添加 /tts 接口
+class TTSRequest(BaseModel):
+    """TTS 请求体"""
+    text: str                     # 要合成的文字
+    text_language: str = "zh"     # 语言，默认中文，可选 ja/en
+
+
+@app.post("/tts")
+async def tts_endpoint(request: TTSRequest):
+    """
+    TTS 语音合成接口（方案 C：中文显示 + 日文语音）。
+    """
+    import time
+    t0 = time.time()
+
+    # 步骤 1：中文 → 日文翻译
+    ja_text = await translate_to_japanese(request.text)
+    t1 = time.time()
+    print(f"[TTS] 翻译耗时: {t1 - t0:.1f}s, 原文: {request.text[:20]}... → {ja_text[:20]}...")
+
+    # 步骤 2：日文 → 语音合成
+    audio_bytes = await sovits_synthesize(ja_text, text_language="ja")
+    t2 = time.time()
+    print(f"[TTS] 合成耗时: {t2 - t1:.1f}s, 总耗时: {t2 - t0:.1f}s")
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/wav",
+    )
 # TODO: P4 将添加记忆相关接口
 
 

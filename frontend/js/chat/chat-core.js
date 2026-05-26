@@ -148,6 +148,13 @@ class ChatCore {
                 } catch (e) { /* 忽略 */ }
             }
 
+            // === P3: 流式结束后，调用 TTS 播放语音 ===
+            // 后端会自动翻译成日文再合成，前端只需传中文文本
+            if (fullReply && window.amadeus && window.amadeus.audio) {
+                window.amadeus.audio.init();
+                window.amadeus.audio.speak(fullReply);
+            }
+
         } catch (err) {
             loadingMsg.textContent = '哎呀，出错了... 请检查后端日志或 .env 配置';
             console.error('[Chat] 发送失败:', err);
