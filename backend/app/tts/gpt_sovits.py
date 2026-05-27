@@ -27,6 +27,7 @@ async def synthesize(text: str, text_language: str = "zh") -> bytes:
     request_body = {
         "text": text,
         "text_language": text_language,
+        "sample_steps": 4,    # V4 默认 8，降到 4 快 30-50%
     }
 
     # 发送异步 POST 请求

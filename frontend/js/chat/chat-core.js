@@ -96,63 +96,82 @@ class ChatCore {
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';          // 缓冲区，用于组装不完整的 SSE 行
-            let fullReply = '';       // 累积完整回复
+            let fullReply = '';       // 累积完整回复（用来显示）
+            let sentenceBuffer = '';  // 累积当前句子（用来切分 TTS）
+            let pendingShort = '';    // 暂存短句，等凑够再合并入队
+
+            // 只按句号切句，感叹号、问号不断开，保持语气连贯
+            const SENTENCE_END = /[。.]/;
 
             // 清空"思考中..."，准备接收流
             loadingMsg.textContent = '';
-            loadingMsg.classList.add('streaming');  // 可加一个 CSS 动画标识
+            loadingMsg.classList.add('streaming');
 
             // 3. 循环读取数据流
             while (true) {
                 const {done, value} = await reader.read();
-                if (done) break;   // 流结束
+                if (done) break;
 
-                // 将二进制块解码为字符串
                 buffer += decoder.decode(value, {stream: true});
 
-                // 按 \n 分割每一行
                 const lines = buffer.split('\n');
-                buffer = lines.pop();  // 最后一行可能不完整，留到下次处理
+                buffer = lines.pop();
 
                 for (const line of lines) {
-                    // SSE 行格式：data: {"chunk": "xxx"}
                     if (line.startsWith('data: ')) {
                         const dataStr = line.slice(6);
-
-                        // 结束标志
                         if (dataStr === '[DONE]') continue;
 
                         try {
                             const data = JSON.parse(dataStr);
                             const chunk = data.chunk;
                             fullReply += chunk;
+                            sentenceBuffer += chunk;
                             loadingMsg.textContent = fullReply;
-                            // 自动滚动到最底
                             this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-                        } catch (e) {
-                            // 解析失败忽略（稀有）
-                            console.warn('[Chat] 解析 SSE 数据失败:', line);
-                        }
+
+                            // === P3 切句：while 循环不断切，短句暂存合并 ===
+                            let cut = true;
+                            while (cut) {
+                                const match = sentenceBuffer.match(SENTENCE_END);
+                                if (!match) { cut = false; break; }
+
+                                const idx = match.index + 1;
+                                const sentence = sentenceBuffer.slice(0, idx);
+                                const clean = sentence.replace(/[（(][^）)]*[）)]/g, '').trim();
+                                sentenceBuffer = sentenceBuffer.slice(idx);
+
+                                // 累积到 pendingShort
+                                pendingShort += sentence;
+
+                                // 合并后够长（≥3字）就入队
+                                const mergedClean = pendingShort.replace(/[（(][^）)]*[）)]/g, '').trim();
+                                if (mergedClean.length >= 3 && window.amadeus && window.amadeus.audio) {
+                                    window.amadeus.audio.enqueue(mergedClean);
+                                    pendingShort = '';
+                                }
+                            }
+                        } catch (e) { /* ignore */ }
                     }
                 }
             }
 
-            // 处理最后留在 buffer 里的残留数据
+            // 处理最后留在 buffer 里的残留 SSE 数据
             if (buffer.startsWith('data: ') && buffer !== 'data: [DONE]') {
                 try {
                     const data = JSON.parse(buffer.slice(6));
                     if (data.chunk) {
                         fullReply += data.chunk;
+                        sentenceBuffer += data.chunk;
                         loadingMsg.textContent = fullReply;
                     }
                 } catch (e) { /* 忽略 */ }
             }
 
-            // === P3: 流式结束后，调用 TTS 播放语音 ===
-            // 后端会自动翻译成日文再合成，前端只需传中文文本
-            if (fullReply && window.amadeus && window.amadeus.audio) {
-                window.amadeus.audio.init();
-                window.amadeus.audio.speak(fullReply);
+            // === P3: 流结束，flush 残留（pendingShort + sentenceBuffer） ===
+            const last = (pendingShort + sentenceBuffer).replace(/[（(][^）)]*[）)]/g, '').trim();
+            if (last.length >= 2 && window.amadeus?.audio) {
+                window.amadeus.audio.enqueue(last);
             }
 
         } catch (err) {

@@ -5,12 +5,16 @@
 class AudioPlayer {
     constructor() {
         this.API_BASE = 'http://localhost:8000';
-        this.audioContext = null;    // Web Audio API 上下文
-        this.isPlaying = false;      // 是否正在播放
-        this.onSpeakingStart = null; // 回调：张嘴
-        this.onSpeakingEnd = null;   // 回调：闭嘴
-        this.onMouthUpdate = null;   // 回调：(value) 口型大小
-        this.mouthInterval = null;   // 口型动画定时器
+        this.audioContext = null;
+        this.isPlaying = false;
+        this.onSpeakingStart = null;
+        this.onSpeakingEnd = null;
+        this.onMouthUpdate = null;
+        this.mouthInterval = null;
+
+        // === P3 分句流式：播放队列 ===
+        this.queue = [];            // ["句子1", "句子2", ...]
+        this.isProcessing = false;  // 是否正在依次播放队列
     }
 
     /**
@@ -24,15 +28,45 @@ class AudioPlayer {
     }
 
     /**
-     * 合成并播放语音
-     * 后端自动将中文翻译为日文后调用 GPT-SoVITS 合成
-     * @param {string} text - 要播放的文字（中文即可）
+     * 加入播放队列（分句流式 TTS 入口）
+     * 前端切句后调用，自动排队 + 顺序播放
+     * @param {string} text - 单句话（中文即可）
+     */
+    enqueue(text) {
+        if (!text || !text.trim()) return;
+        this.init();
+        this.queue.push(text.trim());
+
+        // 如果没在处理，立即启动队列消费
+        if (!this.isProcessing) {
+            this._processQueue();
+        }
+
+        console.log(`[Audio] 入队: ${text.slice(0, 20)}... 队列长度: ${this.queue.length}`);
+    }
+
+    /**
+     * 依次消费队列：取第一句 → 合成+播放 → 等播完 → 取下一句
+     */
+    async _processQueue() {
+        this.isProcessing = true;
+
+        while (this.queue.length > 0) {
+            const text = this.queue.shift();
+            await this.speak(text);   // speak 现在是 async，播放结束才 resolve
+        }
+
+        this.isProcessing = false;
+    }
+
+    /**
+     * 合成 + 播放一句（内部方法，由 processQueue 调用）
      */
     async speak(text) {
         if (!text || !this.audioContext) return;
 
         try {
-            // 调用后端 /tts 接口（后端自动翻译日文 + 合成语音）
+            // 1. 调后端 /tts（翻译 + 合成）
             const res = await fetch(`${this.API_BASE}/tts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -41,14 +75,14 @@ class AudioPlayer {
 
             if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
 
-            // 2. 获取音频二进制数据
+            // 2. 获取音频二进制
             const arrayBuffer = await res.arrayBuffer();
 
-            // 3. 解码为 AudioBuffer
+            // 3. 解码
             const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
 
-            // 4. 播放
-            this.playBuffer(audioBuffer);
+            // 4. 等待播放完成（playBuffer 返回 Promise）
+            await this.playBuffer(audioBuffer);
 
         } catch (err) {
             console.error('[Audio] TTS 播放失败:', err);
@@ -56,35 +90,31 @@ class AudioPlayer {
     }
 
     /**
-     * 播放已解码的 AudioBuffer
-     * 同时驱动口型动画，模拟说话时的张嘴动作
+     * 播放已解码的 AudioBuffer，返回 Promise（播放结束时 resolve）
      */
     playBuffer(audioBuffer) {
-        // 停止之前的口型动画
-        this.stopMouthAnimation();
-
-        const source = this.audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(this.audioContext.destination);
-
-        // 触发张嘴回调
-        this.isPlaying = true;
-        this.onSpeakingStart?.();
-
-        // 播放结束时自动闭嘴
-        source.onended = () => {
-            this.isPlaying = false;
+        return new Promise((resolve) => {
             this.stopMouthAnimation();
-            this.onSpeakingEnd?.();
-        };
 
-        source.start();
+            const source = this.audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.audioContext.destination);
 
-        // 启动口型动画：每 100ms 随机调整张嘴幅度
-        // 真正的口型同步需要 GPT-SoVITS 返回时间戳，这是简化版
-        this.startMouthAnimation();
+            this.isPlaying = true;
+            this.onSpeakingStart?.();
 
-        console.log(`[Audio] 播放中，时长: ${audioBuffer.duration.toFixed(1)}s`);
+            source.onended = () => {
+                this.isPlaying = false;
+                this.stopMouthAnimation();
+                this.onSpeakingEnd?.();
+                resolve();   // ← 关键：播放结束，让队列继续
+            };
+
+            source.start();
+            this.startMouthAnimation();
+
+            console.log(`[Audio] 播放中，时长: ${audioBuffer.duration.toFixed(1)}s`);
+        });
     }
 
     /**
